@@ -13,6 +13,7 @@ import pl.pk.resources.ExceptionUtils;
 import pl.pk.resources.bussiness.ProcessingStatus;
 import pl.pk.resources.bussiness.Resource;
 import pl.pk.resources.repository.ResourceRepository;
+import pl.pk.resources.service.ProcessingService;
 
 @RestController
 @RequestMapping("/resources")
@@ -21,9 +22,14 @@ public class ResourceController {
   private final Logger log = LoggerFactory.getLogger(ResourceController.class);
 
   private final ResourceRepository resourceRepository;
+  private final ProcessingService processingService;
 
-  private ResourceController(final ResourceRepository resourceRepository) {
+  private ResourceController(final ResourceRepository resourceRepository, final ProcessingService processingService) {
+    ExceptionUtils.notNull(resourceRepository, "SCIN_PK_20220922121745", log);
+    ExceptionUtils.notNull(processingService, "SCIN_PK_20220922121752", log);
+
     this.resourceRepository = resourceRepository;
+    this.processingService = processingService;
   }
 
   @PostMapping("/register")
@@ -36,6 +42,7 @@ public class ResourceController {
 
     // Oczywiscie do dyskusji i wymagan czy powinnismy jeszcze raz na proces wrzucic, czy wykonac inna akcje
     // Zakładam że nie rejestrujemy po raz drugi, stworzylbym endpoint w ktorym ponowiłbym procesowanie
+    // Być może błąd że już zgłoszono, który frontend sobie jakos obsłuży?
     final Optional<Resource> resourceOptional = resourceRepository.findByRequestedURL(request.url);
 
     if (resourceOptional.isPresent()) {
@@ -43,6 +50,7 @@ public class ResourceController {
     } else {
       final Resource resource = Resource.register(request.uuid, request.url);
       resourceRepository.save(resource);
+      processingService.process(resource);
       result = resource.getProcessingStatus();
     }
 
