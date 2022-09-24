@@ -1,7 +1,9 @@
 package pl.pk.resources.controller;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import lombok.AllArgsConstructor;
 import lombok.ToString;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,9 +13,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pl.pk.resources.ExceptionUtils;
 import pl.pk.resources.bussiness.ProcessingStatus;
+import pl.pk.resources.bussiness.RegisterStatus;
 import pl.pk.resources.bussiness.Resource;
 import pl.pk.resources.repository.ResourceRepository;
 import pl.pk.resources.service.ProcessingService;
+import pl.pk.resources.service.RegisterService;
 
 @RestController
 @RequestMapping("/resources")
@@ -23,35 +27,37 @@ public class ResourceController {
 
   private final ResourceRepository resourceRepository;
   private final ProcessingService processingService;
+  private final RegisterService registerService;
 
-  private ResourceController(final ResourceRepository resourceRepository, final ProcessingService processingService) {
+  private ResourceController(final ResourceRepository resourceRepository, final ProcessingService processingService,
+      final RegisterService registerService) {
     ExceptionUtils.notNull(resourceRepository, "SCIN_PK_20220922121745", log);
     ExceptionUtils.notNull(processingService, "SCIN_PK_20220922121752", log);
+    ExceptionUtils.notNull(processingService, "SCIN_PK_20220923154440", log);
 
     this.resourceRepository = resourceRepository;
     this.processingService = processingService;
+    this.registerService = registerService;
   }
 
   @PostMapping("/register")
-  private ProcessingStatus registerResourceToSave(final @RequestBody ResourceRequest request) {
+  private ResourceRequestResponse registerResourceToSave(final @RequestBody ResourceRequest request) {
     ExceptionUtils.notNull(request, "SCIN_PK_20220922094130", log);
 
     request.checkInputData();
 
-    final ProcessingStatus result;
+    final ResourceRequestResponse result;
 
     // Oczywiscie do dyskusji i wymagan czy powinnismy jeszcze raz na proces wrzucic, czy wykonac inna akcje
     // Zakładam że nie rejestrujemy po raz drugi, stworzylbym endpoint w ktorym ponowiłbym procesowanie
     // Być może błąd że już zgłoszono, który frontend sobie jakos obsłuży?
-    final Optional<Resource> resourceOptional = resourceRepository.findByRequestedURL(request.url);
+    final Optional<Resource> resourceOptional = resourceRepository.findByRequestUUID(request.uuid);
 
-    if (resourceOptional.isPresent()) {
-      result = resourceOptional.get().getProcessingStatus();
+    if (resourceOptional.isPresent() && (ProcessingStatus.COMPLETED == resourceOptional.get().getProcessingStatus())) {
+      result = ResourceRequestResponse.createResponse(request, RegisterStatus.ALREADY_EXIST);
     } else {
-      final Resource resource = Resource.register(request.uuid, request.url);
-      resourceRepository.save(resource);
-      processingService.process(resource);
-      result = resource.getProcessingStatus();
+      registerService.registerResource(request.uuid, request.url);
+      result = ResourceRequestResponse.createResponse(request, RegisterStatus.REGISTERED);
     }
 
     return result;
@@ -69,6 +75,21 @@ public class ResourceController {
       ExceptionUtils.notNull(uuid, "SCIN_PK_20220922090140", log);
       ExceptionUtils.notEmpty(url, "SCIN_PK_20220922090150", log);
       ExceptionUtils.canCreateURL(url, "SCIN_PK_20220922091937", log);
+    }
+  }
+
+  @ToString
+  @AllArgsConstructor
+  private static class ResourceRequestResponse {
+
+    public UUID uuid;
+    public String url;
+    public LocalDateTime registered;
+    public RegisterStatus registerStatus;
+
+    private static ResourceRequestResponse createResponse(final ResourceRequest request,
+        RegisterStatus registerStatus) {
+      return new ResourceRequestResponse(request.uuid, request.url, LocalDateTime.now(), registerStatus);
     }
   }
 

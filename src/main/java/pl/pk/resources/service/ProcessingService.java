@@ -2,18 +2,19 @@ package pl.pk.resources.service;
 
 
 import java.io.IOException;
-import java.time.LocalDateTime;
-import javax.transaction.Transactional;
-import javax.transaction.Transactional.TxType;
+import java.util.UUID;
 import org.jsoup.Connection;
 import org.jsoup.Connection.Response;
+import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.messaging.handler.annotation.Header;
+import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.stereotype.Service;
 import pl.pk.resources.ExceptionUtils;
-import pl.pk.resources.bussiness.ProcessingStatus;
 import pl.pk.resources.bussiness.Resource;
 import pl.pk.resources.controller.ResourceController;
 import pl.pk.resources.repository.ResourceRepository;
@@ -30,33 +31,28 @@ public class ProcessingService {
     this.resourceRepository = resourceRepository;
   }
 
-  @Transactional(TxType.REQUIRES_NEW)
-  public void process(final Resource resource) {
+  @KafkaListener(groupId = "processorGroups", topics = RegisterService.TOPIC, concurrency = "3")
+  public void consume(@Header(KafkaHeaders.RECEIVED_MESSAGE_KEY) UUID requestUUID, @Payload String url) {
+    ExceptionUtils.notNull(requestUUID, "SCIN_PK_20220923175417", log);
+    ExceptionUtils.notEmpty(url, "SCIN_PK_20220923175429", log);
+    ExceptionUtils.canCreateURL(url, "SCIN_PK_20220923175447", log);
 
-    ExceptionUtils.notNull(resource, "SCIN_PK_20220922120059", log);
-    ExceptionUtils.notNull(resource.getRequestedURL(), "SCIN_PK_20220922120123", log);
+    process(requestUUID, url);
+  }
+
+  private void process(final UUID requestUUID, final String url) {
+    Resource resource;
 
     try {
-      log.info("Próba nawiązania połączenia - {}", resource.getRequestedURL());
-      final Connection connection = Jsoup.connect(resource.getRequestedURL());
+      final Connection connection = Jsoup.connect(url);
       final Response response = connection.execute();
+      resource = Resource.registerCompleted(requestUUID, url, response.body());
 
-      // Czy jak będzie puste body to dopuszczamy?
-      // Można pokusić się o zapis HttpStatus codu?
-      if (response != null && response.statusCode() == HttpStatus.OK.value()) {
-        log.info("Nawiązano połączenie.. zapis danych");
-        // TO-DO timeProvider
-        resource.setCompletitionDate(LocalDateTime.now());
-        resource.setProcessingStatus(ProcessingStatus.COMPLETED);
-        resource.setResource(response.body());
-      } else {
-        resource.setProcessingStatus(ProcessingStatus.FAILED);
-      }
-    } catch (IllegalArgumentException | IOException ex) {
-      log.warn("Wystąpił problem z linkiem...");
-      // niezgodne z FF - do dyskusji :)
-      resource.setProcessingStatus(ProcessingStatus.FAILED);
+    } catch (IOException ex) {
+      resource = Resource.registerFailed(requestUUID, url);
     }
+
+    resourceRepository.save(resource);
   }
 }
 

@@ -1,6 +1,5 @@
 package pl.pk.resources.bussiness;
 
-import java.sql.Clob;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import javax.persistence.Entity;
@@ -14,7 +13,7 @@ import javax.persistence.Table;
 import javax.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
+import org.hibernate.annotations.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.pk.resources.ExceptionUtils;
@@ -26,7 +25,6 @@ import pl.pk.resources.ExceptionUtils;
 @Table
 @NoArgsConstructor
 @Getter
-@Setter
 public class Resource {
 
   private static final Logger log = LoggerFactory.getLogger(Resource.class);
@@ -35,10 +33,10 @@ public class Resource {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  @Type(type="uuid-char")
   private UUID requestUUID;
-  private LocalDateTime requestDate;
   private String requestedURL;
-  private LocalDateTime completitionDate;
+  private LocalDateTime modificationDate;
 
   @Enumerated(EnumType.STRING)
   private ProcessingStatus processingStatus;
@@ -49,21 +47,30 @@ public class Resource {
   @Version
   private Integer version;
 
-  private Resource(final UUID requestUUID, final LocalDateTime requestDate, final String requestedURL,
-      final ProcessingStatus processingStatus) {
-
+  private Resource(final UUID requestUUID, final String requestedURL, final LocalDateTime modificationDate,
+      final ProcessingStatus processingStatus, final String resource) {
     this.requestUUID = requestUUID;
-    this.requestDate = requestDate;
     this.requestedURL = requestedURL;
+    this.modificationDate = modificationDate;
     this.processingStatus = processingStatus;
+    this.resource = resource;
   }
 
-  public static Resource register(final UUID requestUUID, final String requestedURL) {
+  public static Resource registerCompleted(final UUID requestUUID, final String requestedURL, final String resource) {
 
     ExceptionUtils.notNull(requestUUID, "SCIN_PK_20220922075031", log);
     ExceptionUtils.notNull(requestedURL, "SCIN_PK_20220922084850", log);
+    ExceptionUtils.notEmpty(resource, "SCIN_PK_20220923190319", log);
 
-    return new Resource(requestUUID, LocalDateTime.now(), requestedURL, ProcessingStatus.REGISTERED);
+    return new Resource(requestUUID, requestedURL, LocalDateTime.now(), ProcessingStatus.COMPLETED, resource);
+  }
+
+  public static Resource registerFailed(final UUID requestUUID, final String requestedURL) {
+
+    ExceptionUtils.notNull(requestUUID, "SCIN_PK_20220923190704", log);
+    ExceptionUtils.notNull(requestedURL, "SCIN_PK_20220923190707", log);
+
+    return new Resource(requestUUID, requestedURL, LocalDateTime.now(), ProcessingStatus.FAILED, null);
   }
 
 }
