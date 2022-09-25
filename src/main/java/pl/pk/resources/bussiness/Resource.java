@@ -13,6 +13,7 @@ import javax.persistence.Table;
 import javax.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.Type;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ import pl.pk.resources.ExceptionUtils;
 @Table
 @NoArgsConstructor
 @Getter
+@Setter
 public class Resource {
 
   private static final Logger log = LoggerFactory.getLogger(Resource.class);
